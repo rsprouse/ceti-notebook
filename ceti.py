@@ -341,3 +341,33 @@ def specs2long(row, welchspecarray, praatspecarray, ltasspecarray, freqs):
             ['praat'] * len(freqs['praat']) + \
             ['ltas'] * len(freqs['ltas'])
     }
+
+def get_positions_from_tag_times(df, tag, t1, t2, chanstr, resample_rate):
+    '''
+    Load position data from a tag and return as a time series with a specified sample rate.
+    '''
+    ## TODO: handle times from subflac files
+    tagdf = df[df['tag'] == tag]
+    chans = ['dprh'.find(c) for c in chanstr]  # chanstr has mix of characters in 'dprh'
+    try:
+        assert(len(tagdf) <= 1)
+    except AssertionError:
+        msg = f'Found multiple .wav files for tag {tag}. Cannot choose one.\n'
+        raise RuntimeError(msg)
+    try:
+        with sf.SoundFile(tagdf.iloc[0]['posabspath'], 'r') as fh:
+            sr_native = fh.samplerate
+            fh.seek(np.round(t1 * sr_native).astype(int))
+            # Load the target number of frames, transpose to match librosa form, and
+            # select channels
+            nsamp = np.round((t2 - t1) * sr_native).astype(int)
+            y = fh.read(frames=nsamp, dtype=np.float32, always_2d=False).T[chans]
+            # Resample if necessary
+            if sr_native != resample_rate:
+                y = librosa.resample(
+                    y, orig_sr=sr_native, target_sr=resample_rate
+                )
+    except Exception as e:
+        msg = f'Could not get position data for tag {tag}.\n\n{e}\n\n'
+        raise RuntimeError(msg)
+    return y
